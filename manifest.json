@@ -1,0 +1,13 @@
+{
+  "id": "trainer_skins",
+  "name": "Trainer Skins",
+  "version": "0.1.0",
+  "entry": "main.lua",
+  "api": 2,
+  "category": "UI",
+  "priority": 100,
+  "games": ["gen1", "gen2"],
+  "game_version": ">=0.2.24",
+  "permissions": ["engine_internals"],
+  "description": "Adds customizable trainer skins for battle, overworld, biking, surfing, fishing, Trainer Card and Hall of Fame, with an in-game skin selector."
+}
