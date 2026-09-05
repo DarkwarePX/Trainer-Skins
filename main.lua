@@ -6,19 +6,21 @@ return function(mod)
     local Assets = require("src.render.Assets")
     local PaletteFX = require("src.render.PaletteFX")
     local GbcPalette = require("src.render.GbcPalette")
-	local Sound = require("src.core.Sound")
+    local Sound = require("src.core.Sound")
 
-    local SKIN_FILES = {
-        front = "front.png",
-        back = "back.png",
-        walk = "walk.png",
-        bike = "bike.png",
-        surf = "surf.png",
-        surf_pikachu = "surf_pikachu.png",
-		fish_front = "fish_front.png",
-		fish_back = "fish_back.png",
-		fish_side = "fish_side.png"
-    }
+local SKIN_FILES = {
+    front = "front.png",
+    front2 = "front2.png",
+    front3 = "front3.png",
+    back = "back.png",
+    walk = "walk.png",
+    bike = "bike.png",
+    surf = "surf.png",
+    surf_pikachu = "surf_pikachu.png",
+    fish_front = "fish_front.png",
+    fish_back = "fish_back.png",
+    fish_side = "fish_side.png"
+}
 
 local PREVIEW = {
     x = 96,
@@ -32,50 +34,131 @@ local PREVIEW = {
 
 local SKIN_LIST_VISIBLE = 7
 
+local ROLE_PLAYER = "player"
+local ROLE_RIVAL = "rival"
+
+local ROLE_CONFIG = {
+    [ROLE_PLAYER] = { skin_key = "skin", color_key = "skin_color" },
+    [ROLE_RIVAL] = { skin_key = "rival_skin", color_key = "rival_skin_color" }
+}
+
 local DEFAULT_SKIN_COLOR = "green"
 
 local SKIN_COLOR_ORDER = {
+    "truecolor",
     "red",
     "green",
-    "blue"
+    "blue",
+    "yellow",
+    "purple",
+    "orange",
+    "cyan",
+    "pink",
+    "brown",
+    "gray"
 }
 
-local SKIN_COLOR_INDEX = {
-    red = 1,
-    green = 2,
-    blue = 3
-}
+local SKIN_COLOR_INDEX = {}
+for index, id in ipairs(SKIN_COLOR_ORDER) do
+    SKIN_COLOR_INDEX[id] = index
+end
 
 local SKIN_COLOR_PALETTES = {
     red = {
         { 255, 255, 255 },
         { 239, 156, 107 },
-        { 248, 56, 8  },
+        { 255, 0, 0  },
         { 0, 0, 0 }
     },
     green = {
         { 255, 255, 255 },
         { 239, 156, 107 },
-        { 0, 132, 0 },
+        { 58, 189, 25 },
         { 0, 0, 0 }
     },
     blue = {
         { 255, 255, 255 },
         { 239, 156, 107 },
-        { 0, 0, 255 },
+        { 82, 74, 255 },
         { 0, 0, 0 }
-    }
+    },
+	yellow = {
+		{ 255, 255, 255 },
+		{ 239, 156, 107 },
+		{ 173, 90, 0 },
+		{ 0, 0, 0 }
+	},
+    purple = {
+        { 255, 255, 255 },
+        { 239, 156, 107 },
+        { 139, 0, 186 },
+        { 0, 0, 0 }
+    },
+    orange = {
+        { 255, 255, 255 },
+        { 239, 156, 107 },
+        { 191, 57, 0 },
+        { 0, 0, 0 }
+    },		
+    cyan = {
+        { 255, 255, 255 },
+        { 239, 156, 107 },
+        { 88, 184, 248 },
+        { 0, 0, 0 }
+    },
+    pink = {
+        { 255, 255, 255 },
+        { 239, 156, 107 },
+        { 249, 0, 170 },
+        { 0, 0, 0 }
+    },
+    brown = {
+        { 255, 255, 255 },
+        { 239, 156, 107 },
+        { 58, 44, 19 },
+        { 0, 0, 0 }
+    },
+    gray = {
+        { 255, 255, 255 },
+        { 239, 156, 107 },
+        { 75, 75, 75 },
+        { 0, 0, 0 }
+    },		
 }
+
+local function normalize_role(role)
+    return role == ROLE_RIVAL and ROLE_RIVAL or ROLE_PLAYER
+end
+
+local function valid_skin_color(id)
+    return SKIN_COLOR_INDEX[id] and id or DEFAULT_SKIN_COLOR
+end
+
+-- Migrate old saves once so Player and Rival colors become independent.
+do
+    local rival_color_key = ROLE_CONFIG[ROLE_RIVAL].color_key
+
+    if mod.save:get(rival_color_key) == nil then
+        local player_color = valid_skin_color(mod.save:get(ROLE_CONFIG[ROLE_PLAYER].color_key, DEFAULT_SKIN_COLOR))
+        mod.save:set(rival_color_key, player_color)
+    end
+end
 
 -- Palette pipeline contract:
 -- 1. The skin selects the image assets.
--- 2. RED/GREEN/BLUE is the skin's base RGB palette.
--- 3. PaletteFX/GbcPalette and the current game context always own the final color.
--- Never redraw the selected RGB palette after the recomp palette pipeline.
+-- 2. PaletteFX/GbcPalette and the current game context always own the final color.
 
-local function selected_skin_color()
-    local id = mod.save:get("skin_color", DEFAULT_SKIN_COLOR)
-    return SKIN_COLOR_INDEX[id] and id or DEFAULT_SKIN_COLOR
+local function selected_skin_color(role)
+    role = normalize_role(role)
+    return valid_skin_color(mod.save:get(ROLE_CONFIG[role].color_key, DEFAULT_SKIN_COLOR))
+end
+
+local function true_color_selected(role)
+    return selected_skin_color(role) == "truecolor"
+end
+
+local function skin_true_color_active(role)
+    return true_color_selected(role) and PaletteFX.honorsTrueColor()
 end
 
     local IDLE_FRAMES = { down = 1, up = 2, left = 3 }
@@ -88,8 +171,8 @@ local skins = {
     }
 }
 
-    local Gen2Save
-    local gen2_original_defs = {}
+local Gen2Save
+local original_sprite_defs = {}
 
     local GEN2_PLAYER_SPRITES = {
         { id = "SPRITE_CHRIS", key = "walk" },
@@ -168,7 +251,7 @@ local GEN2_DEFAULT_SPRITES = {
             local shade
 
             if obj then
-                shade = luminance >= 0.50 and 170 / 255 or luminance >= 0.17 and 85 / 255 or 0
+                shade = luminance >= 0.60 and 170 / 255 or luminance >= 0.17 and 85 / 255 or 0
             else
                 shade = luminance >= 0.83 and 1 or luminance >= 0.50 and 170 / 255 or luminance >= 0.17 and 85 / 255 or 0
             end
@@ -179,43 +262,134 @@ local GEN2_DEFAULT_SPRITES = {
         return data
     end
 
-    Assets.imageData = function(path)
-        local kind = palette_assets[path]
-        local data = base_image_data(path)
+local image_load_role = ROLE_PLAYER
 
-        if not kind then return data end
-        return quantize_palette_data(data, kind == "obj")
+local function with_skin_role(role, fn)
+    role = normalize_role(role)
+
+    if image_load_role == role then
+        return fn()
     end
 
-    local function create_gen2_front_preview(game)
-        local ok, TrainerCard = pcall(require, "src.ui.gen2.TrainerCard")
-        if not ok or not TrainerCard then return nil end
+    local previous_role = image_load_role
+    image_load_role = role
 
-        local trainer_card = TrainerCard.new(game)
-        if not trainer_card:styled() then return nil end
+    local results = { pcall(fn) }
 
-        local portrait = love.graphics.newCanvas(40, 56)
-        local wide = trainer_card.gfx and trainer_card.gfx.portraitWide or 5
-        local high = math.floor((trainer_card.gfx and trainer_card.gfx.portraitTiles or 35) / wide)
+    image_load_role = previous_role
 
-        love.graphics.push("all")
-        love.graphics.setCanvas(portrait)
-        love.graphics.origin()
-        love.graphics.clear(0, 0, 0, 0)
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.translate(-112, -8)
+    local success = table.remove(results, 1)
+    if not success then error(results[1], 0) end
 
-        for row = 0, high - 1 do
-            for col = 0, wide - 1 do
-                trainer_card:tile(trainer_card.card, row * wide + col, 14 + col, 1 + row)
-            end
+    return unpack(results)
+end
+
+Assets.imageData = function(path)
+    local kind = palette_assets[path]
+    local data = base_image_data(path)
+
+    if not kind or skin_true_color_active(image_load_role) then return data end
+    return quantize_palette_data(data, kind == "obj")
+end
+
+local function sprite_renderer_role(renderer)
+    local def = renderer and renderer.def
+    if not def or not def._trainerSkinId then return nil end
+
+    local role = def._trainerSkinRole
+
+    if role ~= ROLE_PLAYER and role ~= ROLE_RIVAL then
+        return nil
+    end
+
+    return role
+end
+
+local function install_sprite_renderer_role_context()
+    if SpriteRenderer._trainerSkinsRoleContextPatched then return end
+
+    local original_resolve_image = SpriteRenderer.resolveImage
+    local original_draw = SpriteRenderer.draw
+    local original_draw_tile = SpriteRenderer.drawTile
+
+    SpriteRenderer.resolveImage = function(renderer)
+        local role = sprite_renderer_role(renderer)
+
+        if not role then
+            return original_resolve_image(renderer)
         end
 
-        love.graphics.setCanvas()
-        love.graphics.pop()
-
-        return portrait
+        return with_skin_role(role, function()
+            return original_resolve_image(renderer)
+        end)
     end
+
+    SpriteRenderer.draw = function(renderer, px, py, camX, camY, facing, walkPhase, stepFlip, topHalf, forceFlip, frameOverride, oamRow)
+        local role = sprite_renderer_role(renderer)
+
+        if not role then
+            return original_draw(renderer, px, py, camX, camY, facing, walkPhase, stepFlip, topHalf, forceFlip, frameOverride, oamRow)
+        end
+
+        return with_skin_role(role, function()
+            return original_draw(renderer, px, py, camX, camY, facing, walkPhase, stepFlip, topHalf, forceFlip, frameOverride, oamRow)
+        end)
+    end
+
+    SpriteRenderer.drawTile = function(renderer, path, x, y, flip, quad)
+        local role = sprite_renderer_role(renderer)
+
+        if not role then
+            return original_draw_tile(renderer, path, x, y, flip, quad)
+        end
+
+        return with_skin_role(role, function()
+            return original_draw_tile(renderer, path, x, y, flip, quad)
+        end)
+    end
+
+    SpriteRenderer._trainerSkinsRoleContextPatched = true
+end
+install_sprite_renderer_role_context()
+
+local function create_gen2_front_preview(game)
+    local ok, TrainerCard = pcall(require, "src.ui.gen2.TrainerCard")
+    if not ok or not TrainerCard then return nil end
+
+    local trainer_card = TrainerCard.new(game)
+    if not trainer_card:styled() or not trainer_card.card then return nil end
+
+    local sheet = trainer_card.card
+    local image = sheet:image()
+    if not image then return nil end
+
+    local portrait = love.graphics.newCanvas(40, 56)
+    local wide = trainer_card.gfx and trainer_card.gfx.portraitWide or 5
+    local high = math.floor((trainer_card.gfx and trainer_card.gfx.portraitTiles or 35) / wide)
+
+    love.graphics.push("all")
+    love.graphics.setCanvas(portrait)
+    love.graphics.origin()
+    love.graphics.clear(0, 0, 0, 0)
+    love.graphics.setShader()
+    love.graphics.setColor(1, 1, 1, 1)
+
+    for row = 0, high - 1 do
+        for col = 0, wide - 1 do
+            local index = row * wide + col
+            local quad = sheet:quad(index)
+
+            if quad then
+                love.graphics.draw(image, quad, col * 8, row * 8)
+            end
+        end
+    end
+
+    love.graphics.setCanvas()
+    love.graphics.pop()
+
+    return portrait
+end
 
     local function discover_skins()
         local skins_path = mod.assets:path("assets/skins")
@@ -243,9 +417,10 @@ if folder_info and folder_info.type == "directory" and string.lower(folder) ~= "
                     local path = skin_asset(folder, filename)
                     skin[key] = path
 
-                    if path then
-                        register_palette_asset(path, key ~= "front" and key ~= "back")
-                    end
+if path then
+    local is_pic = key == "front" or key == "front2" or key == "front3" or key == "back"
+    register_palette_asset(path, not is_pic)
+end
                 end
 
                 table.insert(skins, skin)
@@ -291,9 +466,54 @@ local function get_skin(id)
     return skins[1], 1
 end
 
-local function selected_skin()
-    return get_skin(mod.save:get("skin", skins[1].id))
+local function selected_skin_for(role)
+    role = normalize_role(role)
+    return get_skin(mod.save:get(ROLE_CONFIG[role].skin_key, skins[1].id))
 end
+
+local function custom_trainer_skin_active()
+    local player_skin = selected_skin_for(ROLE_PLAYER)
+    local rival_skin = selected_skin_for(ROLE_RIVAL)
+
+    return (player_skin and player_skin.id ~= "Default")
+        or (rival_skin and rival_skin.id ~= "Default")
+end
+
+local function install_overworld_transition_compatibility()
+    local ok_gen1, Gen1World = pcall(require, "src.world.OverworldController")
+
+    if ok_gen1 and Gen1World and type(Gen1World.drawWorldFaded) == "function" and not Gen1World._trainerSkinsTransitionPatched then
+        local original_draw_world_faded = Gen1World.drawWorldFaded
+
+        Gen1World.drawWorldFaded = function(world, ...)
+            if custom_trainer_skin_active() then
+                return false
+            end
+
+            return original_draw_world_faded(world, ...)
+        end
+
+        Gen1World._trainerSkinsTransitionPatched = true
+    end
+
+    local ok_gen2, Gen2World = pcall(require, "src.world.gen2.World")
+
+    if ok_gen2 and Gen2World and type(Gen2World.drawFadeRemap) == "function" and not Gen2World._trainerSkinsTransitionPatched then
+        local original_draw_fade_remap = Gen2World.drawFadeRemap
+
+        Gen2World.drawFadeRemap = function(world, ...)
+            if custom_trainer_skin_active() then
+                return false
+            end
+
+            return original_draw_fade_remap(world, ...)
+        end
+
+        Gen2World._trainerSkinsTransitionPatched = true
+    end
+end
+
+install_overworld_transition_compatibility()
 
 local function skin_fish_tiles(skin)
     if not skin or skin.id == "Default" then return nil end
@@ -322,18 +542,20 @@ local function skin_fish_tiles(skin)
     return skin._fishTiles or nil
 end
 
-local function skin_base_palette(skin)
+local function skin_base_palette(skin, role)
     if not skin or skin.id == "Default" then return nil end
-    return SKIN_COLOR_PALETTES[selected_skin_color()]
+    return SKIN_COLOR_PALETTES[selected_skin_color(role)]
 end
 
-local function selected_skin_palette()
-    return skin_base_palette(selected_skin())
+local function selected_skin_palette(role)
+    role = normalize_role(role)
+    return skin_base_palette(selected_skin_for(role), role)
 end
 
-local function skin_palette_group(skin, prefix)
+local function skin_palette_group(skin, prefix, role)
+    role = normalize_role(role)
     local id = skin and skin.id or "none"
-    return (prefix or "trainer_skin") .. ":" .. tostring(id) .. ":" .. selected_skin_color()
+    return (prefix or "trainer_skin") .. ":" .. role .. ":" .. tostring(id) .. ":" .. selected_skin_color(role)
 end
 
 local GEN2_SKIN_SPRITE_KEYS = {
@@ -376,19 +598,49 @@ local function install_gen2_overworld_palette_source()
     World.applySpritePalette = function(world, entity)
         local result = original_apply_sprite_palette(world, entity)
 
-        if not entity or not world.player or entity ~= world.player or not entity.sprite then
+        if not entity or not entity.sprite then
             return result
         end
 
-        local skin = selected_skin()
-        if not skin or skin.id == "Default" then return result end
-        if not is_custom_gen2_player_sprite(entity, skin) then return result end
+        local skin
+        local prefix
+        local role
 
-        local colors = skin_base_palette(skin)
-        if colors then
-            entity.sprite:setObjPalette(colors, skin_palette_group(skin, "trainer_skin_gen2"))
+        if world.player and entity == world.player then
+            skin = selected_skin_for(ROLE_PLAYER)
+
+            if not skin or skin.id == "Default" then
+                return result
+            end
+
+            if not is_custom_gen2_player_sprite(entity, skin) then
+                return result
+            end
+
+            prefix = "trainer_skin_gen2"
+            role = ROLE_PLAYER
+        else
+            local def = entity.spriteDef
+
+            if not def or def._trainerSkinRole ~= ROLE_RIVAL then
+                return result
+            end
+
+            skin = selected_skin_for(ROLE_RIVAL)
+
+            if not skin or skin.id == "Default" then
+                return result
+            end
+
+            prefix = "trainer_skin_rival_gen2"
+            role = ROLE_RIVAL
         end
 
+        local colors = skin_base_palette(skin, role)
+
+        if colors then
+            entity.sprite:setObjPalette(colors, skin_palette_group(skin, prefix, role))
+        end
         return result
     end
 
@@ -399,22 +651,48 @@ install_gen2_overworld_palette_source()
 
 local skin_image_cache = {}
 
-local function cached_skin_image(full_path)
+local function skin_image_variant(role)
+    return skin_true_color_active(role) and "truecolor" or "quantized"
+end
+
+local function cached_skin_image(full_path, role)
     if not full_path then return nil end
 
-    local cached = skin_image_cache[full_path]
+    role = normalize_role(role)
+
+    local variant = skin_image_variant(role)
+    local key = full_path .. "#" .. variant
+
+    local cached = skin_image_cache[key]
     if cached then return cached end
 
-    local data = Assets.imageData(full_path)
+    local data = with_skin_role(role, function()
+        return Assets.imageData(full_path)
+    end)
+
     local image = love.graphics.newImage(data)
     image:setFilter("nearest", "nearest")
 
-    skin_image_cache[full_path] = image
+    skin_image_cache[key] = image
     return image
 end
 
-local function skin_image(path)
-    return path and cached_skin_image(mod.assets:path(path)) or nil
+local function skin_image(path, role)
+    return path and cached_skin_image(mod.assets:path(path), role) or nil
+end
+
+local function load_skin_visual(skin, key, role)
+    if not skin or skin.id == "Default" then return nil end
+
+    local path = skin[key]
+    if not path then return nil end
+
+    role = normalize_role(role)
+
+    local ok, image = pcall(skin_image, path, role)
+    if not ok or not image then return nil end
+
+    return image, skin_true_color_active(role)
 end
 
 Assets.register(function()
@@ -431,12 +709,13 @@ local function install_gen1_advanced_palette_source()
         local skin_id = sprite_def and sprite_def._trainerSkinId
 
         if skin_id then
-            local skin = get_skin(skin_id)
-            local colors = skin_base_palette(skin)
+local skin = get_skin(skin_id)
+local role = sprite_def._trainerSkinRole == ROLE_RIVAL and ROLE_RIVAL or ROLE_PLAYER
+local colors = skin_base_palette(skin, role)
 
-            if colors then
-                return PaletteFX.darkObp(colors, skin_palette_group(skin, "trainer_skin_advanced"))
-            end
+if colors then
+    return PaletteFX.darkObp(colors, skin_palette_group(skin, "trainer_skin_advanced", role))
+end
         end
 
         return original_sprite_obp(sprite_def, seed)
@@ -447,33 +726,86 @@ end
 
 install_gen1_advanced_palette_source()
 
+local GEN1_RIVAL_CLASSES = {
+    OPP_RIVAL1 = true,
+    OPP_RIVAL2 = true,
+    OPP_RIVAL3 = true
+}
+
+local function gen1_rival_front(skin, opp_class)
+    if not skin then return nil end
+
+    if opp_class == "OPP_RIVAL2" then
+        return skin.front2 or skin.front
+    end
+
+    if opp_class == "OPP_RIVAL3" then
+        return skin.front3 or skin.front
+    end
+
+    return skin.front
+end
+
 local gen1_battle_back_palette_cache = {}
 
-local function get_gen1_advanced_back_image(path)
-    local skin = selected_skin()
-    local colors = skin_base_palette(skin)
-    if not colors then return nil end
+local function get_gen1_battle_trainer_image(state, path, skin, role)
+role = normalize_role(role)
+
+    if not skin or skin.id == "Default" or not path then return nil end
 
     local full_path = mod.assets:path(path)
-    local cache_key = full_path .. "#" .. selected_skin_color()
+    local true_color_active = skin_true_color_active(role)
+
+    local forced_raw = PaletteFX.mode == "og"
+        or PaletteFX.mode == "og_inv"
+        or PaletteFX.mode == "classic"
+        or PaletteFX.forcesRawGrays()
+
+    local colors
+
+    if not true_color_active and not forced_raw then
+        if PaletteFX.usesGbcPack() then
+            colors = skin_base_palette(skin, role)
+        else
+            colors = PaletteFX.pal(state.game.data, "MEWMON") or PaletteFX.GRAYS
+        end
+
+        if colors then
+            colors = PaletteFX.effectiveColors(colors)
+        end
+    end
+
+    local cache_key = full_path
+        .. "#" .. tostring(skin.id)
+        .. "#" .. role
+.. "#" .. selected_skin_color(role)
+        .. "#" .. tostring(PaletteFX.mode)
+        .. "#" .. tostring(true_color_active)
+        .. "#" .. tostring(forced_raw)
+
     local cached = gen1_battle_back_palette_cache[cache_key]
     if cached then return cached end
 
-    local data = Assets.imageData(full_path)
+    local data = with_skin_role(role, function()
+    return Assets.imageData(full_path)
+end)
 
-    data:mapPixel(function(_, _, r, g, b, a)
-        if a == 0 then return r, g, b, a end
+    if colors then
+        data:mapPixel(function(_, _, r, g, b, a)
+            if a == 0 then return r, g, b, a end
 
-        local color = r > 0.83 and colors[1]
-            or r > 0.50 and colors[2]
-            or r > 0.17 and colors[3]
-            or colors[4]
+            local color = r > 0.83 and colors[1]
+                or r > 0.50 and colors[2]
+                or r > 0.17 and colors[3]
+                or colors[4]
 
-        return color[1] / 255, color[2] / 255, color[3] / 255, a
-    end)
+            return color[1] / 255, color[2] / 255, color[3] / 255, a
+        end)
+    end
 
     local image = love.graphics.newImage(data)
     image:setFilter("nearest", "nearest")
+
     gen1_battle_back_palette_cache[cache_key] = image
     return image
 end
@@ -485,29 +817,48 @@ local function install_gen1_battle_back_palette_pipeline()
 
     local original_pic_image = BattleState.picImage
 
-    BattleState.picImage = function(state, image)
-        local resolved = original_pic_image(state, image)
+BattleState.picImage = function(state, image)
+    local resolved = original_pic_image(state, image)
 
-        if is_gen2(state.game) then return resolved end
-        if image ~= state.playerBackPic then return resolved end
-        if not PaletteFX.usesGbcPack() then return resolved end
+    if is_gen2(state.game) then return resolved end
 
-        local skin = selected_skin()
-        if not skin or not skin.back then return resolved end
+local skin
+local path
+local role
 
-        if state.grayPics or state.blackedOut or (state.introSlide or 0) > 0 then
-            return resolved
-        end
+if image == state.playerBackPic then
+    skin = selected_skin_for(ROLE_PLAYER)
+    path = skin and skin.back
+    role = ROLE_PLAYER
+elseif image == state.trainerPic and GEN1_RIVAL_CLASSES[state.oppClass] then
 
-        if state.activeBgp and state:activeBgp() then
-            return resolved
-        end
+    skin = selected_skin_for(ROLE_RIVAL)
+    path = skin and gen1_rival_front(skin, state.oppClass)
+    role = ROLE_RIVAL
+else
+    return resolved
+end
 
-        local success, replacement = pcall(get_gen1_advanced_back_image, skin.back)
-        if success and replacement then return replacement end
-
+    if not skin or skin.id == "Default" or not path then
         return resolved
     end
+
+    if state.grayPics or state.blackedOut or (state.introSlide or 0) > 0 then
+        return resolved
+    end
+
+    if state.activeBgp and state:activeBgp() then
+        return resolved
+    end
+
+    local success, replacement = pcall(get_gen1_battle_trainer_image, state, path, skin, role)
+
+    if success and replacement then
+        return replacement
+    end
+
+    return resolved
+end
 
     BattleState._trainerSkinsBackPalettePipelinePatched = true
 end
@@ -518,108 +869,273 @@ end)
 
 install_gen1_battle_back_palette_pipeline()
 
-    local gen2_card_cache = {}
+local function install_gen1_rival_battle_pipeline()
+    local ok, BattleState = pcall(require, "src.battle.BattleState")
+    if not ok or not BattleState or type(BattleState.trainerSprite) ~= "function" then return end
+    if BattleState._trainerSkinsRivalBattlePatched then return end
+
+    local original_trainer_sprite = BattleState.trainerSprite
+
+BattleState.trainerSprite = function(data, trainer, opp_class, party_index)
+    local skin = selected_skin_for(ROLE_RIVAL)
+    local front = gen1_rival_front(skin, opp_class)
+
+    if GEN1_RIVAL_CLASSES[opp_class]
+        and skin
+        and skin.id ~= "Default"
+        and front then
+
+        local custom = {
+            pic = mod.assets:path(front),
+            trueColor = skin_true_color_active(ROLE_RIVAL)
+        }
+
+        if type(trainer) == "table" then
+            setmetatable(custom, { __index = trainer })
+        end
+
+return with_skin_role(ROLE_RIVAL, function()
+    return original_trainer_sprite(data, custom, opp_class, party_index)
+end)
+    end
+
+    return original_trainer_sprite(data, trainer, opp_class, party_index)
+end
+
+    BattleState._trainerSkinsRivalBattlePatched = true
+end
+
+install_gen1_rival_battle_pipeline()
+
+local gen2_card_cache = {}
+local gen2_card_bounds_cache = {}
 
 Assets.register(function()
     gen2_card_cache = {}
+    gen2_card_bounds_cache = {}
 end)
 
-local function install_gen2_battle_back_palette_pipeline()
+local GEN2_RIVAL_CLASSES = {
+    RIVAL1 = true,
+    RIVAL2 = true,
+    [9] = true,
+    [42] = true
+}
+
+local GEN2_RIVAL_FRONT2_CLASSES = {
+    RIVAL2 = true,
+    [42] = true
+}
+
+local function is_gen2_rival_class(class_name)
+    return GEN2_RIVAL_CLASSES[class_name] == true
+end
+
+local function gen2_rival_front(skin, class_name)
+    if not skin then return nil end
+
+    if GEN2_RIVAL_FRONT2_CLASSES[class_name] then
+        return skin.front2 or skin.front
+    end
+
+    return skin.front
+end
+
+local function install_gen2_battle_skin_pipeline()
     local ok, BattleState = pcall(require, "src.ui.gen2.BattleState")
-    if not ok or not BattleState or type(BattleState.new) ~= "function" then return end
-    if BattleState._trainerSkinsBackPalettePipelinePatched then return end
+    if not ok or not BattleState then return end
+    if type(BattleState.new) ~= "function" or type(BattleState.drawPic) ~= "function" or type(BattleState.trainerArt) ~= "function" then return end
+    if BattleState._trainerSkinsBattlePipelinePatched then return end
+
+    local Gen2Palettes = require("src.world.gen2.Palettes")
 
     local original_new = BattleState.new
     local original_draw_pic = BattleState.drawPic
-    local Gen2Palettes = require("src.world.gen2.Palettes")
+    local original_trainer_art = BattleState.trainerArt
     local original_trainer_colors = Gen2Palettes.trainerColors
+
+    local function refresh_battle_trainer_image(state, role, path)
+        if not path then return false end
+
+        local ok_image, image = pcall(skin_image, path, role)
+        if not ok_image or not image then return false end
+
+        if role == ROLE_RIVAL then
+            state.enemyTrainerImage = image
+            state.enemyTrainerPath = mod.assets:path(path)
+            state.enemyTrainerTrueColor = skin_true_color_active(ROLE_RIVAL)
+        else
+            state.playerBackImage = image
+            state.playerBackPath = mod.assets:path(path)
+            state.playerBackTrueColor = skin_true_color_active(ROLE_PLAYER)
+        end
+
+        return true
+    end
+
+    local function rival_palette(data, class_name)
+        local skin = selected_skin_for(ROLE_RIVAL)
+        local front = gen2_rival_front(skin, class_name)
+
+        if is_gen2_rival_class(class_name) and skin and skin.id ~= "Default" and front then
+            local colors = skin_base_palette(skin, ROLE_RIVAL)
+
+            if colors then
+                return colors
+            end
+        end
+
+        return original_trainer_colors(data, class_name)
+    end
+
+    BattleState.trainerArt = function(data, class_name)
+        local skin = selected_skin_for(ROLE_RIVAL)
+        local front = gen2_rival_front(skin, class_name)
+
+        if is_gen2_rival_class(class_name) and skin and skin.id ~= "Default" and front then
+            return mod.assets:path(front), skin_true_color_active(ROLE_RIVAL)
+        end
+
+        return original_trainer_art(data, class_name)
+    end
+
+    Gen2Palettes.trainerColors = rival_palette
 
     BattleState.new = function(game, opts)
         local state = original_new(game, opts)
 
         if not is_gen2(game) or state.tutorial then return state end
 
-        local skin = selected_skin()
-        if not skin or not skin.back then return state end
+        local player_skin = selected_skin_for(ROLE_PLAYER)
 
-local ok_image, image = pcall(skin_image, skin.back)
-
-if ok_image and image then
-    state.playerBackImage = image
-    state.playerBackPath = mod.assets:path(skin.back)
-            state.playerBackTrueColor = false
+        if player_skin and player_skin.back and refresh_battle_trainer_image(state, ROLE_PLAYER, player_skin.back) then
             state._trainerSkinBack = true
+        end
+
+        local rival_skin = selected_skin_for(ROLE_RIVAL)
+        local rival_front = gen2_rival_front(rival_skin, state.enemyTrainerClass)
+
+        if state.showEnemyTrainer and is_gen2_rival_class(state.enemyTrainerClass) and rival_skin and rival_skin.id ~= "Default" and rival_front and refresh_battle_trainer_image(state, ROLE_RIVAL, rival_front) then
+            state._trainerSkinRival = true
         end
 
         return state
     end
 
     BattleState.drawPic = function(state, mon, back)
-        local skin = selected_skin()
-        local colors = back and state.showPlayerTrainer and state._trainerSkinBack
-            and skin_base_palette(skin)
+        local player_skin = selected_skin_for(ROLE_PLAYER)
+        local rival_skin = selected_skin_for(ROLE_RIVAL)
+        local rival_front = gen2_rival_front(rival_skin, state.enemyTrainerClass)
 
-        if not colors then
+        local custom_back = back and state.showPlayerTrainer and state._trainerSkinBack and player_skin and player_skin.back
+        local custom_rival = not back and state.showEnemyTrainer and state._trainerSkinRival and rival_skin and rival_front
+
+        if custom_back then
+            refresh_battle_trainer_image(state, ROLE_PLAYER, player_skin.back)
+        end
+
+        if custom_rival then
+            refresh_battle_trainer_image(state, ROLE_RIVAL, rival_front)
+        end
+
+        local player_colors = custom_back and skin_base_palette(player_skin, ROLE_PLAYER)
+        local rival_colors = custom_rival and skin_base_palette(rival_skin, ROLE_RIVAL)
+
+        if not player_colors and not rival_colors then
             return original_draw_pic(state, mon, back)
         end
 
         Gen2Palettes.trainerColors = function(data, class_name)
-            if class_name == "PLAYER" then return colors end
-            return original_trainer_colors(data, class_name)
+            if player_colors and class_name == "PLAYER" then
+                return player_colors
+            end
+
+            if rival_colors and is_gen2_rival_class(class_name) then
+                return rival_colors
+            end
+
+            return rival_palette(data, class_name)
         end
 
         local results = { pcall(original_draw_pic, state, mon, back) }
-        Gen2Palettes.trainerColors = original_trainer_colors
+
+        Gen2Palettes.trainerColors = rival_palette
 
         local success = table.remove(results, 1)
-        if not success then error(results[1], 0) end
+
+        if not success then
+            error(results[1], 0)
+        end
+
         return unpack(results)
     end
 
-    BattleState._trainerSkinsBackPalettePipelinePatched = true
+    BattleState._trainerSkinsBattlePipelinePatched = true
 end
 
-install_gen2_battle_back_palette_pipeline()
+install_gen2_battle_skin_pipeline()
 
-    local function get_gen2_card_portrait(path)
-        local full_path = mod.assets:path(path)
-        if gen2_card_cache[full_path] then return gen2_card_cache[full_path] end
+local function get_gen2_card_bounds(full_path)
+    local cached = gen2_card_bounds_cache[full_path]
+    if cached then return cached end
 
-        local data = Assets.imageData(full_path)
-        local iw, ih = data:getDimensions()
-        local min_x, min_y, max_x, max_y = iw, ih, -1, -1
+    local data = base_image_data(full_path)
+    local iw, ih = data:getDimensions()
+    local min_x, min_y, max_x, max_y = iw, ih, -1, -1
 
-        for y = 0, ih - 1 do
-            for x = 0, iw - 1 do
-                local _, _, _, a = data:getPixel(x, y)
+    for y = 0, ih - 1 do
+        for x = 0, iw - 1 do
+            local _, _, _, a = data:getPixel(x, y)
 
-                if a > 0 then
-                    min_x, min_y = math.min(min_x, x), math.min(min_y, y)
-                    max_x, max_y = math.max(max_x, x), math.max(max_y, y)
-                end
+            if a > 0 then
+                min_x = math.min(min_x, x)
+                min_y = math.min(min_y, y)
+                max_x = math.max(max_x, x)
+                max_y = math.max(max_y, y)
             end
         end
-
-        if max_x < min_x or max_y < min_y then
-            min_x, min_y, max_x, max_y = 0, 0, iw - 1, ih - 1
-        end
-
-        local content_w, content_h = max_x - min_x + 1, max_y - min_y + 1
-        local scale = math.min(1, 40 / content_w, 56 / content_h)
-        local image = love.graphics.newImage(data)
-
-        image:setFilter("nearest", "nearest")
-
-        local portrait = {
-            image = image,
-            scale = scale,
-            x = 112 + math.floor((40 - content_w * scale) / 2) - min_x * scale,
-            y = 8 + 56 - content_h * scale - min_y * scale
-        }
-
-        gen2_card_cache[full_path] = portrait
-        return portrait
     end
+
+    if max_x < min_x or max_y < min_y then
+        min_x, min_y, max_x, max_y = 0, 0, iw - 1, ih - 1
+    end
+
+cached = {
+    min_x = min_x,
+    min_y = min_y,
+    width = max_x - min_x + 1,
+    height = max_y - min_y + 1
+}
+
+    gen2_card_bounds_cache[full_path] = cached
+    return cached
+end
+
+local function get_gen2_card_portrait(path)
+    local full_path = mod.assets:path(path)
+    local variant = skin_image_variant(ROLE_PLAYER)
+    local key = full_path .. "#" .. variant
+
+    local cached = gen2_card_cache[key]
+    if cached then return cached end
+
+    local bounds = get_gen2_card_bounds(full_path)
+    local image = skin_image(path, ROLE_PLAYER)
+
+    if not image then return nil end
+
+    local scale = math.min(1, 40 / bounds.width, 56 / bounds.height)
+
+    local portrait = {
+        image = image,
+        scale = scale,
+        x = 112 + math.floor((40 - bounds.width * scale) / 2) - bounds.min_x * scale,
+        y = 8 + 56 - bounds.height * scale - bounds.min_y * scale
+    }
+
+    gen2_card_cache[key] = portrait
+    return portrait
+end
 
     local function install_gen2_trainer_card_palette_pipeline()
         local ok, TrainerCard = pcall(require, "src.ui.gen2.TrainerCard")
@@ -628,11 +1144,15 @@ install_gen2_battle_back_palette_pipeline()
         local original_draw_portrait = TrainerCard.drawPortrait
 
         TrainerCard.drawPortrait = function(card)
-            local skin = selected_skin()
+            local skin = selected_skin_for(ROLE_PLAYER)
             if not skin or not skin.front then return original_draw_portrait(card) end
 
             local portrait = get_gen2_card_portrait(skin.front)
-            local colors = skin_base_palette(skin) or (card.palette and card:palette(1))
+local colors
+
+if not true_color_selected(ROLE_PLAYER) then
+    colors = skin_base_palette(skin, ROLE_PLAYER)
+end
 
             love.graphics.setColor(1, 1, 1, 1)
             love.graphics.rectangle("fill", 112, 8, 40, 56)
@@ -642,11 +1162,11 @@ install_gen2_battle_back_palette_pipeline()
                 love.graphics.draw(portrait.image, portrait.x, portrait.y, 0, portrait.scale, portrait.scale)
             end
 
-            if colors and GbcPalette.available() then
-                GbcPalette.with(colors, draw)
-            else
-                draw()
-            end
+if colors and GbcPalette.available() then
+    GbcPalette.with(colors, draw)
+else
+    draw()
+end
         end
 
         TrainerCard._trainerSkinsPalettePipelinePatched = true
@@ -662,27 +1182,27 @@ local function install_gen1_trainer_card_palette_pipeline()
     local original_draw = TrainerCard.draw
     local original_sgb_palettes = TrainerCard.sgbPalettes
 
-    local function refresh_portrait(card)
-        local skin = selected_skin()
+local function refresh_portrait(card)
+    local skin = selected_skin_for(ROLE_PLAYER)
+    local image, true_color_active = load_skin_visual(skin, "front", ROLE_PLAYER)
 
-        if skin and skin.front then
-            local ok_image, image = pcall(skin_image, skin.front)
-
-            if ok_image and image then
-                card.pic = image
-                card.picTrueColor = false
-                card._trainerSkinCustomPortrait = true
-                card._trainerSkinCurrentId = skin.id
-            end
-
-            return
-        end
-
-        card.pic = card._trainerSkinsVanillaPic
-        card.picTrueColor = card._trainerSkinsVanillaTrueColor
-        card._trainerSkinCustomPortrait = false
-        card._trainerSkinCurrentId = "Default"
+    if image then
+        card.pic = image
+        card.picTrueColor = true_color_active
+        card._trainerSkinCustomPortrait = true
+        card._trainerSkinCurrentId = skin.id
+        card._trainerSkinCurrentColor = selected_skin_color(ROLE_PLAYER)
+        card._trainerSkinTrueColorActive = true_color_active
+        return
     end
+
+    card.pic = card._trainerSkinsVanillaPic
+    card.picTrueColor = card._trainerSkinsVanillaTrueColor
+    card._trainerSkinCustomPortrait = false
+    card._trainerSkinCurrentId = "Default"
+    card._trainerSkinCurrentColor = selected_skin_color(ROLE_PLAYER)
+    card._trainerSkinTrueColorActive = skin_true_color_active(ROLE_PLAYER)
+end
 
     TrainerCard.new = function(game, opts)
         local card = original_new(game, opts)
@@ -699,20 +1219,37 @@ card._trainerSkinsVanillaTrueColor = false
         return card
     end
 
-    TrainerCard.draw = function(card)
-        local skin = selected_skin()
-        local skin_id = skin and skin.id or "Default"
+TrainerCard.draw = function(card)
+    local skin = selected_skin_for(ROLE_PLAYER)
+    local skin_id = skin and skin.id or "Default"
+   local skin_color = selected_skin_color(ROLE_PLAYER)
+    local true_color_active = skin_true_color_active(ROLE_PLAYER)
 
-        if card._trainerSkinCurrentId ~= skin_id then
-            refresh_portrait(card)
-        end
+    if card._trainerSkinCurrentId ~= skin_id
+        or card._trainerSkinCurrentColor ~= skin_color
+        or card._trainerSkinTrueColorActive ~= true_color_active then
+        refresh_portrait(card)
+    end
 
+    if not card.picTrueColor then
         return original_draw(card)
     end
 
+    card.picTrueColor = false
+    local result = original_draw(card)
+    card.picTrueColor = true
+
+    local _, h = card.pic:getDimensions()
+
+    -- Keep the right card border outside the true-color area.
+    PaletteFX.markTrueColor(104, 4, 48, h)
+
+    return result
+end
+
     TrainerCard.sgbPalettes = function(card, game)
         if card._trainerSkinCustomPortrait and PaletteFX.usesGbcPack() then
-            local colors = selected_skin_palette()
+            local colors = selected_skin_palette(ROLE_PLAYER)
 
             if colors then
                 return { PaletteFX.whole(colors) }
@@ -740,119 +1277,46 @@ local function draw_trainer_skins_down_arrow(x, y)
     love.graphics.pop()
 end
 
-local function install_trainer_card_skins_indicator()
-    -- Gen 1
-    do
-        local ok, TrainerCard = pcall(require, "src.ui.TrainerCard")
+local function patch_trainer_card_skin_ui(module_name, draw_method, arrow_x, arrow_y)
+    local ok, TrainerCard = pcall(require, module_name)
+    if not ok or not TrainerCard then return end
+    if type(TrainerCard.update) ~= "function" or type(TrainerCard[draw_method]) ~= "function" then return end
+    if TrainerCard._trainerSkinsUiPatched then return end
 
-        if ok and TrainerCard
-            and type(TrainerCard.update) == "function"
-            and type(TrainerCard.draw) == "function"
-            and not TrainerCard._trainerSkinsIndicatorPatched then
+    local original_update = TrainerCard.update
+    local original_draw = TrainerCard[draw_method]
 
-            local original_update = TrainerCard.update
-            local original_draw = TrainerCard.draw
+    TrainerCard.update = function(card, dt)
+        local input = card.game and card.game.input
 
-TrainerCard.update = function(card, dt)
-    update_trainer_skins_arrow(card, dt)
-    return original_update(card, dt)
-end
-
-            TrainerCard.draw = function(card)
-                original_draw(card)
-
-if trainer_skins_arrow_visible(card) then
-    draw_trainer_skins_down_arrow(7, 133)
-end
-            end
-
-            TrainerCard._trainerSkinsIndicatorPatched = true
-        end
-    end
-
--- Gen 2
-do
-    local ok, TrainerCard = pcall(require, "src.ui.gen2.TrainerCard")
-
-    if ok and TrainerCard
-        and type(TrainerCard.update) == "function"
-        and type(TrainerCard.drawPanel) == "function"
-        and not TrainerCard._trainerSkinsIndicatorPatched then
-
-        local original_update = TrainerCard.update
-        local original_draw_panel = TrainerCard.drawPanel
-
-TrainerCard.update = function(card, dt)
-    update_trainer_skins_arrow(card, dt)
-    return original_update(card, dt)
-end
-
-        TrainerCard.drawPanel = function(card)
-            original_draw_panel(card)
-
-if trainer_skins_arrow_visible(card) then
-    draw_trainer_skins_down_arrow(15, 130)
-end
+        if input and input:wasPressed("down") then
+            mod.ui.push(card.game, "TrainerSkins")
+            return
         end
 
-        TrainerCard._trainerSkinsIndicatorPatched = true
+        update_trainer_skins_arrow(card, dt)
+        return original_update(card, dt)
     end
-end
-end
 
-install_trainer_card_skins_indicator()
+    TrainerCard[draw_method] = function(card, ...)
+        local results = { original_draw(card, ...) }
 
-local function install_trainer_card_skins_shortcut()
-    -- Gen 1
-    do
-        local ok, TrainerCard = pcall(require, "src.ui.TrainerCard")
-
-        if ok and TrainerCard and type(TrainerCard.update) == "function"
-            and not TrainerCard._trainerSkinsShortcutPatched then
-
-            local original_update = TrainerCard.update
-
-            TrainerCard.update = function(card, dt)
-                local input = card.game and card.game.input
-
-                if input and input:wasPressed("down") then
-                    mod.ui.push(card.game, "TrainerSkins")
-                    return
-                end
-
-                return original_update(card, dt)
-            end
-
-            TrainerCard._trainerSkinsShortcutPatched = true
+        if trainer_skins_arrow_visible(card) then
+            draw_trainer_skins_down_arrow(arrow_x, arrow_y)
         end
+
+        return unpack(results)
     end
 
-    -- Gen 2
-    do
-        local ok, TrainerCard = pcall(require, "src.ui.gen2.TrainerCard")
-
-        if ok and TrainerCard and type(TrainerCard.update) == "function"
-            and not TrainerCard._trainerSkinsShortcutPatched then
-
-            local original_update = TrainerCard.update
-
-            TrainerCard.update = function(card, dt)
-                local input = card.game and card.game.input
-
-if input and input:wasPressed("down") then
-    mod.ui.push(card.game, "TrainerSkins")
-    return
+    TrainerCard._trainerSkinsUiPatched = true
 end
 
-                return original_update(card, dt)
-            end
-
-            TrainerCard._trainerSkinsShortcutPatched = true
-        end
-    end
+local function install_trainer_card_skin_ui()
+    patch_trainer_card_skin_ui("src.ui.TrainerCard", "draw", 7, 133)
+    patch_trainer_card_skin_ui("src.ui.gen2.TrainerCard", "drawPanel", 15, 130)
 end
 
-install_trainer_card_skins_shortcut()
+install_trainer_card_skin_ui()
 
 local function install_gen1_hall_of_fame_palette_pipeline()
     local ok, HallOfFame = pcall(require, "src.ui.HallOfFame")
@@ -864,17 +1328,16 @@ local function install_gen1_hall_of_fame_palette_pipeline()
 
     HallOfFame.new = function(game, on_done)
         local state = original_new(game, on_done)
-        local skin = selected_skin()
+        local skin = selected_skin_for(ROLE_PLAYER)
         state._trainerSkinCustomPlayer = skin and skin.id ~= "Default"
             and (skin.front ~= nil or skin.back ~= nil) or false
 
-        if skin and skin.front then
-            local ok_image, image = pcall(skin_image, skin.front)
-            if ok_image and image then
-                state.playerPic = image
-                state.playerTrueColor = false
-            end
-        end
+local image, _, true_color_active = load_skin_visual(skin, "front", ROLE_PLAYER)
+
+if image then
+    state.playerPic = image
+    state.playerTrueColor = true_color_active
+end
 
         return state
     end
@@ -883,11 +1346,12 @@ local function install_gen1_hall_of_fame_palette_pipeline()
         local mon = state.game and state.game.save and state.game.save.party[state.index or 0]
         if mon then return original_back_pic_for(state) end
 
-        local skin = selected_skin()
-        if skin and skin.back then
-            local ok_image, image = pcall(skin_image, skin.back)
-            if ok_image and image then return image, false end
-        end
+local skin = selected_skin_for(ROLE_PLAYER)
+local image, _, true_color_active = load_skin_visual(skin, "back", ROLE_PLAYER)
+
+if image then
+    return image, true_color_active
+end
 
         return original_back_pic_for(state)
     end
@@ -900,7 +1364,7 @@ local function install_gen1_hall_of_fame_palette_pipeline()
             or (state.phase == "back" and state.afterBack == "player")
 
         if player_phase and state._trainerSkinCustomPlayer and PaletteFX.usesGbcPack() then
-            local colors = selected_skin_palette()
+            local colors = selected_skin_palette(ROLE_PLAYER)
             if colors then return { PaletteFX.whole(colors) } end
         end
 
@@ -921,10 +1385,10 @@ local function install_gen2_hall_of_fame_palette_pipeline()
     local original_draw_scrolled = HallOfFame.drawScrolled
 
     HallOfFame.image = function(state, path)
-        local skin = selected_skin()
+        local skin = selected_skin_for(ROLE_PLAYER)
 
         if skin and skin.back and path == mod.assets:path(skin.back) then
-            local ok_image, image = pcall(cached_skin_image, path)
+            local ok_image, image = pcall(cached_skin_image, path, ROLE_PLAYER)
             if ok_image and image then return image end
         end
 
@@ -932,23 +1396,26 @@ local function install_gen2_hall_of_fame_palette_pipeline()
     end
 
     HallOfFame.drawScrolled = function(state, image, tile_x, tile_y, colors)
-        local skin = selected_skin()
+        local skin = selected_skin_for(ROLE_PLAYER)
 
         if not colors and skin and skin.back and state.playerBackPath == mod.assets:path(skin.back) then
-            local custom_back = skin_image(skin.back)
-            if image == custom_back then colors = skin_base_palette(skin) end
+local custom_back = skin_image(skin.back, ROLE_PLAYER)
+
+if image == custom_back then
+    colors = skin_base_palette(skin, ROLE_PLAYER)
+end
         end
 
         return original_draw_scrolled(state, image, tile_x, tile_y, colors)
     end
 
     HallOfFame.drawPortrait = function(state, tile_x, tile_y)
-        local skin = selected_skin()
+        local skin = selected_skin_for(ROLE_PLAYER)
         if not skin or not skin.front then return original_draw_portrait(state, tile_x, tile_y) end
 
-        local image = skin_image(skin.front)
-        local colors = skin_base_palette(skin)
-        return original_draw_scrolled(state, image, tile_x, tile_y, colors)
+local image = skin_image(skin.front, ROLE_PLAYER)
+local colors = skin_base_palette(skin, ROLE_PLAYER)
+return original_draw_scrolled(state, image, tile_x, tile_y, colors)
     end
 
     HallOfFame._trainerSkinsPalettePipelinePatched = true
@@ -982,6 +1449,68 @@ local function shallow_copy(source)
     return copy
 end
 
+local function remember_sprite_def(def)
+    if not def then return nil end
+
+    local original = original_sprite_defs[def]
+
+    if not original then
+        original = {
+            image = def.image,
+            trueColor = def.trueColor,
+            trainerSkinId = def._trainerSkinId,
+            trainerSkinRole = def._trainerSkinRole
+        }
+
+        original_sprite_defs[def] = original
+    end
+
+    return original
+end
+
+local function restore_sprite_def(def, original)
+    if not def or not original then return end
+
+    def.image = original.image
+    def.trueColor = original.trueColor
+    def._trainerSkinId = original.trainerSkinId
+    def._trainerSkinRole = original.trainerSkinRole
+end
+
+local function vanilla_sprite_def(def)
+    if not def then return nil end
+
+    local copy = shallow_copy(def)
+    local original = original_sprite_defs[def]
+
+    if original then
+        restore_sprite_def(copy, original)
+    end
+
+    return copy
+end
+
+local function apply_skin_to_sprite_def(def, skin, skin_key, role)
+    if not def then return false end
+
+    role = normalize_role(role)
+
+    local original = remember_sprite_def(def)
+    local path = skin and skin.id ~= "Default" and skin[skin_key]
+
+    if not path then
+        restore_sprite_def(def, original)
+        return false
+    end
+
+    def.image = mod.assets:path(path)
+    def.trueColor = true_color_selected(role)
+    def._trainerSkinId = skin.id
+    def._trainerSkinRole = role
+
+    return true
+end
+
     local function get_default_sprite_def(game, kind)
         local data = game and game.data
         if not data then return nil end
@@ -998,13 +1527,7 @@ if is_gen2(game) then
                 local def = data.gen2Sprites[sprite_id]
 
                 if def then
-                    local original = gen2_original_defs[def]
-                    if not original then return def end
-
-local vanilla = shallow_copy(def)
-                    vanilla.image = original.image
-                    vanilla.trueColor = original.trueColor
-                    return vanilla
+return vanilla_sprite_def(def)
                 end
             end
 
@@ -1025,24 +1548,30 @@ local vanilla = shallow_copy(def)
         end
     end
 
-local function create_overworld_renderer(game, kind, path, skin)
-    local base = get_default_sprite_def(game, kind)
+local function create_overworld_renderer(game, kind, path, skin, role, base_override)
+    role = normalize_role(role)
+
+    local base = base_override or get_default_sprite_def(game, kind)
     if not base or not path then return nil end
 
-local def = shallow_copy(base)
+    local def = shallow_copy(base)
 
-    def.image = mod.assets:path(path)
-    def.trueColor = false
-    def._trainerSkinId = skin and skin.id or nil
+def.image = mod.assets:path(path)
+def.trueColor = true_color_selected(role)
+def._trainerSkinId = skin and skin.id or nil
+def._trainerSkinRole = def._trainerSkinId and role or nil
 
-    local renderer = SpriteRenderer.new(def, "player")
+    local renderer = with_skin_role(role, function()
+        return SpriteRenderer.new(def, role == ROLE_RIVAL and "rival_preview" or ROLE_PLAYER)
+    end)
 
     if is_gen2(game) then
         apply_gen2_palette(game, renderer, def)
 
-        local colors = skin_base_palette(skin)
+        local colors = skin_base_palette(skin, role)
+
         if colors then
-            renderer:setObjPalette(colors, skin_palette_group(skin, "trainer_skin_gen2_preview"))
+            renderer:setObjPalette(colors, skin_palette_group(skin, "trainer_skin_gen2_preview", role))
         end
     end
 
@@ -1053,7 +1582,7 @@ end
         local def = get_default_sprite_def(game, kind)
         if not def then return nil end
 
-        local renderer = SpriteRenderer.new(def, "player")
+        local renderer = SpriteRenderer.new(def, ROLE_PLAYER)
         apply_gen2_palette(game, renderer, def)
         return renderer
     end
@@ -1062,7 +1591,7 @@ end
         local path = skin[skin_key]
 
         if path then
-            player[field] = create_overworld_renderer(game, default_kind, path, skin)
+            player[field] = create_overworld_renderer(game, default_kind, path, skin, ROLE_PLAYER)
         else
             player[field] = create_default_renderer(game, default_kind)
         end
@@ -1165,46 +1694,23 @@ end
 install_gen2_fishing_skin_support()
 
 local function apply_gen2_skin(game, skin)
-        local world = game and game.world
-        if not world or not world.sprites then return false end
+    local world = game and game.world
+    if not world or not world.sprites then return false end
 
-        for _, entry in ipairs(GEN2_PLAYER_SPRITES) do
-            local def = world.sprites[entry.id]
-
-            if def then
-                if not gen2_original_defs[def] then
-                    gen2_original_defs[def] = {
-                        image = def.image,
-                        trueColor = def.trueColor,
-                        trainerSkinId = def._trainerSkinId
-                    }
-                end
-
-                local original = gen2_original_defs[def]
-                local path = skin[entry.key]
-
-                if path then
-                    def.image = mod.assets:path(path)
-                    def.trueColor = false
-                    def._trainerSkinId = skin.id
-                else
-                    def.image = original.image
-                    def.trueColor = original.trueColor
-                    def._trainerSkinId = original.trainerSkinId
-                end
-            end
-        end
-
-if world.applyPlayerState then
-    world:applyPlayerState(world.playerState)
-end
-
-if world.player then
-    world.player._trainerSkinFishTiles = skin_fish_tiles(skin)
-end
-
-return true
+    for _, entry in ipairs(GEN2_PLAYER_SPRITES) do
+        apply_skin_to_sprite_def(world.sprites[entry.id], skin, entry.key, ROLE_PLAYER)
     end
+
+    if world.applyPlayerState then
+        world:applyPlayerState(world.playerState)
+    end
+
+    if world.player then
+        world.player._trainerSkinFishTiles = skin_fish_tiles(skin)
+    end
+
+    return true
+end
 
 local function apply_overworld_skin(game, skin)
     if not game or not skin then return end
@@ -1221,31 +1727,136 @@ local function apply_overworld_skin(game, skin)
     apply_gen1_fishing_skin(player, skin)
 end
 
-local function equip_skin(game, skin)
-    if not skin then return end
+local function get_rival_sprite_def(game)
+    local data = game and game.data
+    if not data then return nil end
 
-    mod.save:set("skin", skin.id)
-    apply_overworld_skin(game, skin)
+    if is_gen2(game) then
+        return data.gen2Sprites and data.gen2Sprites["SPRITE_RIVAL"] or nil
+    end
+
+    return data.sprites and data.sprites["SPRITE_BLUE"] or nil
 end
 
-local function set_skin_color(game, color)
+local function vanilla_rival_sprite_def(game)
+    return vanilla_sprite_def(get_rival_sprite_def(game))
+end
+
+local function is_rival_npc(game, npc)
+    if not npc then return false end
+
+    local raw_sprite = npc.def and npc.def.sprite
+
+    if is_gen2(game) then
+        if raw_sprite == "SPRITE_RIVAL" or raw_sprite == 4 then
+            return true
+        end
+
+        local def = npc.spriteDef
+        return def and def.id == "SPRITE_RIVAL" or false
+    end
+
+    return raw_sprite == "SPRITE_BLUE"
+end
+
+local function apply_rival_overworld_skin(game, skin)
+    if not game or not skin then return end
+
+    local world = game.overworld or game.world
+    local base = get_rival_sprite_def(game)
+
+    if not world or not base then return end
+
+apply_skin_to_sprite_def(base, skin, "walk", ROLE_RIVAL)
+
+    local visited = {}
+
+    local function repaint(npc)
+        if not npc or visited[npc] then return end
+        visited[npc] = true
+
+        if not is_rival_npc(game, npc) then return end
+
+        local runtime_def = shallow_copy(base)
+
+        if is_gen2(game) and type(npc.setSpriteDef) == "function" then
+            npc:setSpriteDef(runtime_def)
+
+            if world.applySpritePalette then
+                world:applySpritePalette(npc)
+            end
+        else
+            npc.sprite = with_skin_role(ROLE_RIVAL, function()
+    return SpriteRenderer.new(runtime_def, npc.id)
+end)
+        end
+    end
+
+    for _, npc in ipairs(world.npcs or {}) do
+        repaint(npc)
+    end
+
+    for _, npc in pairs(world.npcPool or {}) do
+        repaint(npc)
+    end
+end
+
+local function apply_role_overworld_skin(game, role, skin)
+    role = normalize_role(role)
+    skin = skin or selected_skin_for(role)
+
+    if role == ROLE_RIVAL then
+        apply_rival_overworld_skin(game, skin)
+    else
+        apply_overworld_skin(game, skin)
+    end
+end
+
+local function reapply_overworld_skins(game)
+    if not game then return end
+
+    apply_role_overworld_skin(game, ROLE_PLAYER)
+    apply_role_overworld_skin(game, ROLE_RIVAL)
+end
+
+local function equip_role_skin(game, skin, role)
+    if not skin then return end
+
+    role = normalize_role(role)
+    mod.save:set(ROLE_CONFIG[role].skin_key, skin.id)
+    apply_role_overworld_skin(game, role, skin)
+end
+
+local function set_skin_color(game, color, role)
     if not SKIN_COLOR_INDEX[color] then return false end
 
-    mod.save:set("skin_color", color)
+    role = normalize_role(role)
 
+    local previous_color = selected_skin_color(role)
+if previous_color == color then return true end   
+   local true_color_transition = previous_color == "truecolor" or color == "truecolor"
+
+    mod.save:set(ROLE_CONFIG[role].color_key, color)
     SpriteRenderer.invalidate()
 
-    if game then
-        apply_overworld_skin(game, selected_skin())
-    end
+if true_color_transition and game and is_gen2(game) then
+    GbcPalette.clear()
+end
+
+if game then
+    apply_role_overworld_skin(game, role)
+end
 
     return true
 end
 
-local function cycle_skin_color(game, delta)
-    local index = SKIN_COLOR_INDEX[selected_skin_color()] or 1
+local function cycle_skin_color(game, delta, role)
+    role = normalize_role(role)
+
+    local index = SKIN_COLOR_INDEX[selected_skin_color(role)] or 1
     index = (index - 1 + (delta or 1)) % #SKIN_COLOR_ORDER + 1
-    return set_skin_color(game, SKIN_COLOR_ORDER[index])
+
+    return set_skin_color(game, SKIN_COLOR_ORDER[index], role)
 end
 
     -- Battle, Trainer Card and Hall of Fame sprites
@@ -1254,18 +1865,18 @@ end
 
         if ctx.demo then return path end
 
-        local skin = selected_skin()
+        local skin = selected_skin_for(ROLE_PLAYER)
         if not skin then return path end
 
-        if ctx.side == "front" and skin.front then
-            ctx.trueColor = false
-            return mod.assets:path(skin.front)
-        end
+if ctx.side == "front" and skin.front then
+    ctx.trueColor = skin_true_color_active(ROLE_PLAYER)
+    return mod.assets:path(skin.front)
+end
 
-        if ctx.side == "back" and skin.back then
-            ctx.trueColor = false
-            return mod.assets:path(skin.back)
-        end
+if ctx.side == "back" and skin.back then
+    ctx.trueColor = skin_true_color_active(ROLE_PLAYER)
+    return mod.assets:path(skin.back)
+end
 
         return path
     end)
@@ -1278,14 +1889,12 @@ mod.events:on("game.ready", function(ev)
 end)
 
 mod.events:on("map.entered", function()
-    if live_game then
-        apply_overworld_skin(live_game, selected_skin())
-    end
+    reapply_overworld_skins(live_game)
 end)
 
 mod.events:on("world.tod_changed", function()
     if live_game and is_gen2(live_game) then
-        apply_overworld_skin(live_game, selected_skin())
+        reapply_overworld_skins(live_game)
     end
 end)
 
@@ -1294,16 +1903,17 @@ end)
 new = function(game)
     local gen2 = is_gen2(game)
 
-    local self = {
-                game = game,
-                isOpaque = true,
-                index = 1,
-				scroll = 0,
-                preview_timer = 0,
-                show_back = false,
-                walk_timer = 0,
-                walk_phase = 1
-            }
+local self = {
+    game = game,
+    isOpaque = true,
+    index = 1,
+    scroll = 0,
+    preview_timer = 0,
+    show_back = false,
+    walk_timer = 0,
+    walk_phase = 1,
+    target = ROLE_PLAYER
+}
 
 local function clamp_skin_scroll()
     if #skins <= SKIN_LIST_VISIBLE then
@@ -1318,9 +1928,13 @@ local function clamp_skin_scroll()
     end
 end
 
-local _, equipped_index = selected_skin()
-self.index = equipped_index
-self.equipped_index = equipped_index
+local _, player_equipped_index = selected_skin_for(ROLE_PLAYER)
+local _, rival_equipped_index = selected_skin_for(ROLE_RIVAL)
+
+self.index = player_equipped_index
+self.player_equipped_index = player_equipped_index
+self.rival_equipped_index = rival_equipped_index
+
 clamp_skin_scroll()
 
 local preview_cache = {}
@@ -1347,19 +1961,23 @@ local last_palette_mode = PaletteFX.mode
                     PaletteFX.whole(PaletteFX.usesGbcPack() and false or world_colors)
                 }
 
-                local preview_skin = skins[self.index]
-                local battle_colors = PaletteFX.pal(game.data, "MEWMON") or PaletteFX.GRAYS
+local preview_skin = skins[self.index]
+local battle_colors = PaletteFX.pal(game.data, "MEWMON") or PaletteFX.GRAYS
 
                 if preview_skin and preview_skin.id ~= "Default" and PaletteFX.usesGbcPack() then
-                    battle_colors = skin_base_palette(preview_skin) or battle_colors
+                    battle_colors = skin_base_palette(preview_skin, self.target) or battle_colors
                 end
 
-                zones[#zones + 1] = PaletteFX.zone(battle_colors, 12, 2, 18, 8)
+                local custom_preview = preview_skin and preview_skin.id ~= "Default"
+zones[#zones + 1] = custom_preview and skin_true_color_active(self.target) and PaletteFX.trueColorZone(12, 2, 18, 8) or PaletteFX.zone(battle_colors, 12, 2, 18, 8)
 
-                if PaletteFX.usesGbcPack() or PaletteFX.usesSpriteObp() then
-                    zones[#zones + 1] = PaletteFX.trueColorZone(12, 11, 18, 12)
-                    zones[#zones + 1] = PaletteFX.trueColorZone(12, 15, 18, 16)
-                end
+if PaletteFX.usesGbcPack() or PaletteFX.usesSpriteObp() then
+    zones[#zones + 1] = PaletteFX.trueColorZone(12, 11, 18, 12)
+
+    if self.target == ROLE_PLAYER then
+        zones[#zones + 1] = PaletteFX.trueColorZone(12, 15, 18, 16)
+    end
+end
 
                 return zones
             end
@@ -1389,35 +2007,124 @@ local last_palette_mode = PaletteFX.mode
                 return def and def.image and safe_image(def.image) or nil
             end
 
-            local function custom_or_default(path, kind)
-                if not path then return default_preview_image(kind) end
-                return skin_image(path)
+local function default_rival_front_image()
+    if gen2 then
+        local data = game.data
+        local classes = data.gen2Trainers and data.gen2Trainers.classes
+        local hud = data.gen2MenuGfx and data.gen2MenuGfx.battleHud
+
+        for _, class_name in ipairs({ "RIVAL1", "RIVAL2" }) do
+            local class_def = classes and classes[class_name]
+            local path = class_def and class_def.pic
+                or hud and hud.trainerPics and hud.trainerPics[class_name]
+
+            if path then
+                return safe_image(path)
             end
+        end
+
+        return nil
+    end
+
+    local ok, BattleState = pcall(require, "src.battle.BattleState")
+    if not ok or not BattleState then return nil end
+
+    local trainers = game.data and game.data.trainers
+    if not trainers then return nil end
+
+    for _, class_name in ipairs({ "OPP_RIVAL1", "OPP_RIVAL2", "OPP_RIVAL3" }) do
+        local trainer = trainers[class_name]
+
+        if trainer then
+            local path = BattleState.trainerPicPath(game.data, trainer, class_name, 1)
+
+            if path then
+                return safe_image(path)
+            end
+        end
+    end
+
+    return nil
+end
+
+local function rival_overworld_preview(skin)
+    local base = vanilla_rival_sprite_def(game)
+    if not base then return nil end
+
+    if skin and skin.id ~= "Default" and skin.walk then
+        local renderer = create_overworld_renderer(game, "walk", skin.walk, skin, ROLE_RIVAL, base)
+        return renderer and renderer:resolveImage() or nil
+    end
+
+    local renderer = with_skin_role(ROLE_RIVAL, function()
+        return SpriteRenderer.new(base, "rival_preview")
+    end)
+
+    if gen2 then
+        apply_gen2_palette(game, renderer, base)
+    end
+
+    return renderer:resolveImage()
+end
+
+local function custom_or_default(path, kind)
+    if not path then return default_preview_image(kind) end
+    return skin_image(path, ROLE_PLAYER)
+end
 
 local function overworld_preview(kind, path, skin)
-    local renderer = path
-        and create_overworld_renderer(game, kind, path, skin)
-        or create_default_renderer(game, kind)
+local renderer = path
+    and create_overworld_renderer(game, kind, path, skin, ROLE_PLAYER)
+    or create_default_renderer(game, kind)
 
     if not renderer then return nil end
     return renderer:resolveImage()
 end
 
 local function gen2_player_palette(custom, skin)
-    if custom then
-        local colors = skin_base_palette(skin)
-        if colors then return colors end
-    end
+    if custom and skin_true_color_active(ROLE_PLAYER) then return nil end
+    if custom then return skin_base_palette(skin, ROLE_PLAYER) end
 
-    if gen2_default_player_palette then
-        return gen2_default_player_palette
-    end
+    if gen2_default_player_palette then return gen2_default_player_palette end
 
     local ok, TrainerCard = pcall(require, "src.ui.gen2.TrainerCard")
     if not ok or not TrainerCard then return nil end
 
     gen2_default_player_palette = TrainerCard.new(game):palette(1)
     return gen2_default_player_palette
+end
+
+local gen2_default_rival_palette
+
+local function gen2_rival_palette(custom, skin)
+if custom and skin_true_color_active(ROLE_RIVAL) then
+    return nil
+end
+
+if custom then
+    return skin_base_palette(skin, ROLE_RIVAL)
+end
+
+    if gen2_default_rival_palette then
+        return gen2_default_rival_palette
+    end
+
+    local palettes = game.data and game.data.gen2Palettes
+    local trainer_palettes = palettes and palettes.trainers
+    local pair = trainer_palettes and (trainer_palettes.RIVAL1 or trainer_palettes.RIVAL2)
+
+    if not pair or not pair[1] or not pair[2] then
+        return nil
+    end
+
+    gen2_default_rival_palette = {
+        { 255, 255, 255 },
+        { pair[1][1], pair[1][2], pair[1][3] },
+        { pair[2][1], pair[2][2], pair[2][3] },
+        { 0, 0, 0 }
+    }
+
+    return gen2_default_rival_palette
 end
 
 local function create_walker_quads(image)
@@ -1439,27 +2146,47 @@ local function create_walker_quads(image)
     return quads
 end
 
-            local function load_preview(skin)
-                if preview_cache[skin.id] then return preview_cache[skin.id] end
+local function load_preview(skin)
+    local cache_key = self.target .. ":" .. skin.id
 
-local walk = overworld_preview("walk", skin.walk, skin)
-local bike = overworld_preview("bike", skin.bike, skin)
+    if preview_cache[cache_key] then
+        return preview_cache[cache_key]
+    end
 
-                local preview = {
-                    front = custom_or_default(skin.front, "front"),
-                    back = custom_or_default(skin.back, "back"),
-                    walk = walk,
-                    bike = bike,
-                    custom_front = skin.front ~= nil,
-                    custom_back = skin.back ~= nil,
-                }
+    local preview
 
-                preview.walk_quads = create_walker_quads(preview.walk)
-                preview.bike_quads = create_walker_quads(preview.bike)
+    if self.target == ROLE_RIVAL then
+        local front = skin.front and skin_image(skin.front, ROLE_RIVAL) or default_rival_front_image()
+        local walk = rival_overworld_preview(skin)
 
-                preview_cache[skin.id] = preview
-                return preview
-            end
+preview = {
+    front = front,
+    back = nil,
+    walk = walk,
+    bike = nil,
+    custom_front = skin.front ~= nil,
+    custom_back = false
+}
+    else
+        local walk = overworld_preview("walk", skin.walk, skin)
+        local bike = overworld_preview("bike", skin.bike, skin)
+
+        preview = {
+            front = custom_or_default(skin.front, "front"),
+            back = custom_or_default(skin.back, "back"),
+            walk = walk,
+            bike = bike,
+            custom_front = skin.front ~= nil,
+            custom_back = skin.back ~= nil
+        }
+    end
+
+    preview.walk_quads = create_walker_quads(preview.walk)
+    preview.bike_quads = create_walker_quads(preview.bike)
+
+    preview_cache[cache_key] = preview
+    return preview
+end
 
             local function draw_centered(image, x, y, w, h)
                 if not image then return end
@@ -1504,6 +2231,29 @@ local bike = overworld_preview("bike", skin.bike, skin)
                 love.graphics.setColor(0, 0, 0, 1)
             end
 
+local function draw_rival_cursor(x, y)
+    love.graphics.setColor(0, 0, 0, 1)
+
+    love.graphics.rectangle("fill", x + 2, y, 3, 1)
+    love.graphics.rectangle("fill", x + 1, y + 1, 5, 1)
+    love.graphics.rectangle("fill", x, y + 2, 7, 3)
+    love.graphics.rectangle("fill", x + 1, y + 5, 5, 1)
+    love.graphics.rectangle("fill", x + 2, y + 6, 3, 1)
+end
+
+local function draw_rival_equipped_marker(x, y)
+    love.graphics.setColor(0, 0, 0, 1)
+
+    love.graphics.rectangle("fill", x + 2, y, 3, 1)
+    love.graphics.rectangle("fill", x + 1, y + 1, 1, 1)
+    love.graphics.rectangle("fill", x + 5, y + 1, 1, 1)
+    love.graphics.rectangle("fill", x, y + 2, 1, 3)
+    love.graphics.rectangle("fill", x + 6, y + 2, 1, 3)
+    love.graphics.rectangle("fill", x + 1, y + 5, 1, 1)
+    love.graphics.rectangle("fill", x + 5, y + 5, 1, 1)
+    love.graphics.rectangle("fill", x + 2, y + 6, 3, 1)
+end
+
             local function get_walker_frame(quads, direction, phase)
                 if phase == 2 or phase == 4 then
                     return quads[IDLE_FRAMES[direction]], false
@@ -1524,25 +2274,40 @@ local function draw_direction_preview(image, quads, y)
                 draw_walker_frame(image, left_quad, PREVIEW.x + PREVIEW.spacing * 2, y, left_mirrored)
             end
 
-            local function draw_battle_preview(image, custom)
-                if not image then return end
+local function draw_battle_preview(image, custom)
+    if not image then return end
 
-                if not gen2 then
-                    draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
-                    return
-                end
+    if not gen2 then
+        draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
+        return
+    end
 
-                local skin = skins[self.index]
-                local colors = gen2_player_palette(custom, skin)
+    local skin = skins[self.index]
+    local true_color_active = custom and skin_true_color_active(self.target)
 
-                if colors and GbcPalette.available() then
-                    GbcPalette.with(colors, function()
-                        draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
-                    end)
-                else
-                    draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
-                end
-            end
+    if true_color_active then
+        love.graphics.push("all")
+        love.graphics.setShader()
+        love.graphics.setColor(1, 1, 1, 1)
+
+        draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
+
+        love.graphics.pop()
+        return
+    end
+
+    local colors = self.target == ROLE_RIVAL
+        and gen2_rival_palette(custom, skin)
+        or gen2_player_palette(custom, skin)
+
+    if colors and GbcPalette.available() then
+        GbcPalette.with(colors, function()
+            draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
+        end)
+    else
+        draw_centered(image, PREVIEW.x, PREVIEW.battle_y, PREVIEW.battle_w, PREVIEW.battle_h)
+    end
+end
 
             function self:update(dt)
                 local gen2_daytime = gen2 and game.world and game.world.daytime or nil
@@ -1557,14 +2322,20 @@ if PaletteFX.mode ~= last_palette_mode
 
     preview_cache = {}
     gen2_default_player_palette = nil
+	gen2_default_rival_palette = nil
 end
 
-                self.preview_timer = self.preview_timer + dt
+if self.target == ROLE_PLAYER then
+    self.preview_timer = self.preview_timer + dt
 
-                if self.preview_timer >= 2 then
-                    self.preview_timer = 0
-                    self.show_back = not self.show_back
-                end
+    if self.preview_timer >= 2 then
+        self.preview_timer = 0
+        self.show_back = not self.show_back
+    end
+else
+    self.preview_timer = 0
+    self.show_back = false
+end
 
                 self.walk_timer = self.walk_timer + dt
 
@@ -1586,24 +2357,39 @@ if game.input:wasPressed("down") then
 end
 
 if game.input:wasPressed("left") then
-    if cycle_skin_color(game, -1) then
+    if cycle_skin_color(game, -1, self.target) then
 	    Sound.play(game.data, "Press_AB")
         preview_cache = {}
     end
 end
 
 if game.input:wasPressed("right") then
-    if cycle_skin_color(game, 1) then
+    if cycle_skin_color(game, 1, self.target) then
 	    Sound.play(game.data, "Press_AB")
         preview_cache = {}
     end
 end
 
 if game.input:wasPressed("a") then
-    equip_skin(game, skins[self.index])
-    self.equipped_index = self.index
+    equip_role_skin(game, skins[self.index], self.target)
+
+    if self.target == ROLE_RIVAL then
+        self.rival_equipped_index = self.index
+    else
+        self.player_equipped_index = self.index
+    end
+
     Sound.play(game.data, "Press_AB")
 end
+
+if game.input:wasPressed("select") then
+    self.target = self.target == ROLE_PLAYER and ROLE_RIVAL or ROLE_PLAYER
+    self.preview_timer = 0
+	Sound.play(game.data, "Press_AB")
+    self.show_back = false
+    return
+end
+
 if game.input:wasPressed("b") then game.stack:pop() end
             end
 
@@ -1624,33 +2410,37 @@ if game.input:wasPressed("b") then game.stack:pop() end
                 love.graphics.rectangle("fill", 10, 3, 5, 1)
                 love.graphics.rectangle("fill", 9, 4, 7, 1)
 
-                -- White title
+-- White title
 love.graphics.setShader(white_text_shader)
 love.graphics.setColor(1, 1, 1, 1)
-Font.draw("SKINS", 18, 0)
-Font.draw("COLORS", 112, 0)
+Font.draw("SKIN", 17, 0)
+Font.draw(self.target == ROLE_RIVAL and "SEL:R" or "SEL:P", 60, 0)
+Font.draw("COLOR", 120, 0)
 love.graphics.setShader()
 
 -- Left arrow
 love.graphics.setColor(1, 1, 1, 1)
-love.graphics.rectangle("fill", 101, 3, 1, 1)
-love.graphics.rectangle("fill", 102, 2, 1, 3)
-love.graphics.rectangle("fill", 103, 1, 1, 5)
-love.graphics.rectangle("fill", 104, 0, 1, 7)
+love.graphics.rectangle("fill", 110, 3, 1, 1)
+love.graphics.rectangle("fill", 111, 2, 1, 3)
+love.graphics.rectangle("fill", 112, 1, 1, 5)
+love.graphics.rectangle("fill", 113, 0, 1, 7)
 
 -- Right arrow
-love.graphics.rectangle("fill", 106, 0, 1, 7)
-love.graphics.rectangle("fill", 107, 1, 1, 5)
-love.graphics.rectangle("fill", 108, 2, 1, 3)
-love.graphics.rectangle("fill", 109, 3, 1, 1)
+love.graphics.rectangle("fill", 115, 0, 1, 7)
+love.graphics.rectangle("fill", 116, 1, 1, 5)
+love.graphics.rectangle("fill", 117, 2, 1, 3)
+love.graphics.rectangle("fill", 118, 3, 1, 1)
 
 love.graphics.setColor(0, 0, 0, 1)
 
-                -- UI boxes
-                Font.drawBox(0, 1, 11, 17)
-                Font.drawBox(11, 1, 9, 9)
-                Font.drawBox(11, 10, 9, 4)
-                Font.drawBox(11, 14, 9, 4)
+-- UI boxes
+Font.drawBox(0, 1, 11, 17)
+Font.drawBox(11, 1, 9, 9)
+Font.drawBox(11, 10, 9, 4)
+
+if self.target == ROLE_PLAYER then
+    Font.drawBox(11, 14, 9, 4)
+end
 
                 love.graphics.setColor(0, 0, 0, 1)
 
@@ -1662,13 +2452,21 @@ for i = first, last do
     local row = i - first
     local y = 24 + row * 16
 
-    Font.draw(skin.name, 16, y)
+Font.draw(skin.name, 16, y)
 
-if i == self.equipped_index then
-    draw_equipped_marker(9, gen2 and y or y + 1)
+if self.target == ROLE_PLAYER and i == self.player_equipped_index then
+    draw_equipped_marker(9, y)
+elseif self.target == ROLE_RIVAL and i == self.rival_equipped_index then
+    draw_rival_equipped_marker(8, y)
 end
 
-    if i == self.index then Font.drawCode(Theme.cursor, 8, y) end
+if i == self.index then
+    if self.target == ROLE_RIVAL then
+        draw_rival_cursor(8, y)
+    else
+        Font.drawCode(Theme.cursor, 8, gen2 and y or y - 1)
+    end
+end
 end
 
 if self.scroll + SKIN_LIST_VISIBLE < #skins then
@@ -1681,15 +2479,21 @@ end
                 love.graphics.setColor(1, 1, 1, 1)
 
                 -- Battle front / back
-                if self.show_back then
-                    draw_battle_preview(preview.back, preview.custom_back)
-                else
-                    draw_battle_preview(preview.front, preview.custom_front)
-                end
+if self.target == ROLE_RIVAL then
+    draw_battle_preview(preview.front, preview.custom_front)
+else
+    if self.show_back then
+        draw_battle_preview(preview.back, preview.custom_back)
+    else
+        draw_battle_preview(preview.front, preview.custom_front)
+    end
+end
 
-                -- Walk and bike previews
 draw_direction_preview(preview.walk, preview.walk_quads, PREVIEW.walk_y)
-draw_direction_preview(preview.bike, preview.bike_quads, PREVIEW.bike_y)
+
+if self.target == ROLE_PLAYER then
+    draw_direction_preview(preview.bike, preview.bike_quads, PREVIEW.bike_y)
+end
             end
 
             return self

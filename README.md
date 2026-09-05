@@ -2,6 +2,16 @@
 
 Trainer skin mod for Pokémon Gen 1 and Gen 2 using the Gen 1 Recompilation Project
 
+## V0.2.0 Changes
+
+-added new colors and truecolor mode
+
+-adjusted cursor position in gen 2 games
+
+-now is possible swap rival sprites 
+
+-UI adapted to rival skin change system
+
 ## Showcase
 
 <p align="center">
@@ -18,6 +28,7 @@ Trainer skin mod for Pokémon Gen 1 and Gen 2 using the Gen 1 Recompilation Proj
 ## Features
 
 - Custom trainer skins
+- Custom rival skins
 - Support for all Gen 1 & Gen 2 games
 - Front and back battle sprites
 - Overworld walking sprites
@@ -38,6 +49,8 @@ Each skin folder supports:
 
 ```text
 front.png
+front2.png (rival)
+front3.png (rival)
 back.png
 walk.png
 bike.png
@@ -67,6 +80,7 @@ UP / DOWN    Select skin
 LEFT / RIGHT Change skin color
 A            Equip selected skin
 B            Return to Trainer Card
+SELECT       Swap between player and rival skin
 ```
 
 ## Skin Colors
@@ -74,9 +88,17 @@ B            Return to Trainer Card
 Each custom skin can use one of three base palettes:
 
 ```text
+TRUECOLOR
 RED
 GREEN
 BLUE
+YELLOW
+CYAN
+PURPLE
+ORANGE
+BROWN
+PINK
+GRAY
 ```
 
 The selected color acts as the base RGB palette for the skin.
