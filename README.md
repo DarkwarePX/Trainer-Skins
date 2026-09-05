@@ -42,6 +42,7 @@ Trainer skin mod for Pokémon Gen 1 and Gen 2 using the Gen 1 Recompilation Proj
 - Missing skin files automatically use the default trainer sprite as a fallback
 - You can add or remove skins without any issues, to add a new skin go to `mods\trainer_skins\assets\skins` directory and create a folder with skin name
 - The skin selection interface adapts to the frame chosen in the settings
+-if you hasnt front2 or front3 (rival) mod will use front
 
 ## Skin Structure
 
@@ -101,7 +102,7 @@ PINK
 GRAY
 ```
 
-The selected color acts as the base RGB palette for the skin.
+The selected color acts as the base palette for the skin.
 
 The recomp palette system still controls the final displayed colors. This means game palette modes such as SGB, DMG, Classic and other palette effects continue to work normally with custom skins
 
