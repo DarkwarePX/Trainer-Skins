@@ -85,7 +85,7 @@ SELECT       Swap between player and rival skin
 
 ## Skin Colors
 
-Each custom skin can use one of three base palettes:
+Each custom skin can use one of these base palettes:
 
 ```text
 TRUECOLOR
